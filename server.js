@@ -48,10 +48,29 @@ app.post("/api/translate", async (req, res) => {
 const deepgramClient = createClient(process.env.DEEPGRAM_API_KEY);
 let keepAlive;
 
-const setupDeepgram = (ws) => {
+const setupDeepgram = (ws, lang = "en") => {
     const deepgram = deepgramClient.listen.live({
-        smart_format: true,
+        punctuate: true,
         model: "nova-2",
+        language: lang
+    });
+
+    let lastTranscript = ""; // ✅ Store last transcript to avoid sending duplicates
+
+    deepgram.addListener(LiveTranscriptionEvents.Transcript, (data) => {
+        if (data.channel && data.channel.alternatives.length > 0) {
+            const transcript = data.channel.alternatives[0].transcript;
+            const isFinal = data.is_final || false;
+
+            if (transcript && transcript !== lastTranscript) {
+                lastTranscript = transcript; // ✅ Prevent duplicate transcripts
+                console.log(`🔊 Transcribed: ${transcript} (Final: ${isFinal})`);
+
+                if (isFinal) {
+                    ws.send(JSON.stringify({ channel: data.channel, is_final: true }));
+                }
+            }
+        }
     });
 
     if (keepAlive) clearInterval(keepAlive);
@@ -97,23 +116,29 @@ const setupDeepgram = (ws) => {
 
 wss.on("connection", (ws) => {
     console.log("ws: client connected");
-    let deepgram = setupDeepgram(ws);
+    let selectedLanguage = "en";
+    let deepgram = setupDeepgram(ws, selectedLanguage);
 
     ws.on("message", (message) => {
-        console.log("ws: client data received");
+        try {
+            const messageString = message.toString();
+            if (messageString.startsWith("{") && messageString.endsWith("}")) {
+                const parsedMessage = JSON.parse(messageString);
+                if (parsedMessage.type === "setLanguage") {
+                    selectedLanguage = parsedMessage.language || "en";
+                    console.log(`✅ Transcription language set to: ${selectedLanguage}`);
 
-        if (deepgram.getReadyState() === 1 /* OPEN */) {
-            console.log("ws: data sent to deepgram");
-            deepgram.send(message);
-        } else if (deepgram.getReadyState() >= 2 /* 2 = CLOSING, 3 = CLOSED */) {
-            console.log("ws: data couldn't be sent to deepgram");
-            console.log("ws: retrying connection to deepgram");
-            /* Attempt to reopen the Deepgram connection */
-            deepgram.finish();
-            deepgram.removeAllListeners();
-            deepgram = setupDeepgram(ws);
-        } else {
-            console.log("ws: data couldn't be sent to deepgram");
+                    deepgram.finish();
+                    deepgram.removeAllListeners();
+                    deepgram = setupDeepgram(ws, selectedLanguage);
+                    return;
+                }
+            } else {
+                deepgram.send(message);
+                console.log("ws: audio data sent to deepgram");
+            }
+        } catch (error) {
+            console.error("Error processing WebSocket message:", error);
         }
     });
 
@@ -121,7 +146,6 @@ wss.on("connection", (ws) => {
         console.log("ws: client disconnected");
         deepgram.finish();
         deepgram.removeAllListeners();
-        deepgram = null;
     });
 });
 

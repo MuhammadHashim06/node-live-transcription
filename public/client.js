@@ -6,7 +6,7 @@ const translationLang = document.getElementById("translation-language");
 
 let isRecording = false;
 let microphone;
-let socket = new WebSocket("ws://localhost:3000"); // Ensure correct WebSocket connection
+let socket = new WebSocket("ws://localhost:3000");
 
 async function getMicrophone() {
     try {
@@ -22,7 +22,6 @@ async function openMicrophone(mic, socket) {
     return new Promise((resolve) => {
         mic.onstart = () => {
             console.log("🎤 Microphone started");
-            document.body.classList.add("recording");
             recordBtn.innerHTML = `<i class="fas fa-stop"></i> Stop Listening`;
             recordBtn.classList.add("bg-red-500");
             recordBtn.classList.remove("bg-blue-500");
@@ -31,7 +30,6 @@ async function openMicrophone(mic, socket) {
 
         mic.onstop = () => {
             console.log("🎤 Microphone stopped");
-            document.body.classList.remove("recording");
             recordBtn.innerHTML = `<i class="fas fa-microphone"></i> Start Listening`;
             recordBtn.classList.add("bg-blue-500");
             recordBtn.classList.remove("bg-red-500");
@@ -68,7 +66,22 @@ recordBtn.addEventListener("click", async () => {
 
 socket.addEventListener("open", () => {
     console.log("✅ Connected to WebSocket server");
+
+    socket.send(JSON.stringify({
+        type: "setLanguage",
+        language: transcriptionLang.value
+    }));
 });
+
+transcriptionLang.addEventListener("change", () => {
+    const selectedLang = transcriptionLang.value;
+    if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "setLanguage", language: selectedLang }));
+        console.log(`🌐 Transcription language changed to: ${selectedLang}`);
+    }
+});
+
+let lastTranscript = ""; // ✅ Track last processed transcript to prevent duplication
 
 socket.addEventListener("message", (event) => {
     if (event.data === "") return;
@@ -81,10 +94,13 @@ socket.addEventListener("message", (event) => {
         return;
     }
 
-    if (data && data.channel && data.channel.alternatives[0].transcript !== "") {
-        const transcriptionText = data.channel.alternatives[0].transcript;
+    if (data && data.channel && data.channel.alternatives.length > 0) {
+        const transcript = data.channel.alternatives[0].transcript;
+        const isFinal = data.is_final || false; // ✅ Only process final transcriptions
 
-        // ✅ Remove placeholders on first transcription
+        if (!transcript || transcript === lastTranscript) return; // ✅ Prevent duplication
+        lastTranscript = transcript; // ✅ Update last transcript
+
         if (captions.innerHTML.trim() === "Waiting for speech input...") {
             captions.innerHTML = "";
         }
@@ -92,34 +108,27 @@ socket.addEventListener("message", (event) => {
             translationBox.innerHTML = "";
         }
 
-        // ✅ List of punctuation marks indicating sentence completion
-        const sentenceEndings = [
-            ".", "!", "?", "…", ":", ";", "—", "。", "！", "？"
-        ];
-
-        let lastChar = transcriptionText.slice(-1);
+        const sentenceEndings = [".", "!", "?", "…", ":", ";", "—", "。", "！", "？"];
+        let lastChar = transcript.slice(-1);
         let isSentenceComplete = sentenceEndings.includes(lastChar);
 
-        if (isSentenceComplete) {
-            // ✅ Create a new transcription sentence div
+        if (isFinal || isSentenceComplete) {
+            // ✅ Append only final sentences to prevent duplication
             let newTranscriptionDiv = document.createElement("div");
-            newTranscriptionDiv.innerText = transcriptionText;
+            newTranscriptionDiv.innerText = transcript;
             newTranscriptionDiv.className = "transcription-sentence bg-gray-600 p-2 rounded-lg mt-1";
             captions.appendChild(newTranscriptionDiv);
-
-            // ✅ Auto-scroll to the latest transcription
             captions.scrollTop = captions.scrollHeight;
 
-            // ✅ Call translation function & send the transcription to DeepL
-            sendToDeepL(transcriptionText);
+            sendToDeepL(transcript);
         } else {
-            // ✅ Update the last ongoing sentence in real-time
+            // ✅ Update ongoing sentence in real-time (intermediate)
             let lastSentenceDiv = captions.lastElementChild;
             if (lastSentenceDiv) {
-                lastSentenceDiv.innerText = transcriptionText;
+                lastSentenceDiv.innerText = transcript;
             } else {
                 let newTranscriptionDiv = document.createElement("div");
-                newTranscriptionDiv.innerText = transcriptionText;
+                newTranscriptionDiv.innerText = transcript;
                 newTranscriptionDiv.className = "transcription-sentence bg-gray-600 p-2 rounded-lg mt-1";
                 captions.appendChild(newTranscriptionDiv);
             }
@@ -131,10 +140,8 @@ socket.addEventListener("close", () => {
     console.log("❌ Disconnected from WebSocket server");
 });
 
-// ✅ **Function to send text to DeepL API via backend**
 async function sendToDeepL(text) {
-    const targetLang = translationLang.value; // Get selected translation language
-
+    const targetLang = translationLang.value;
     try {
         const response = await fetch("/api/translate", {
             method: "POST",
@@ -154,8 +161,6 @@ async function sendToDeepL(text) {
             newTranslationDiv.innerText = translationData.translations[0].text;
             newTranslationDiv.className = "translation-sentence bg-gray-600 p-2 rounded-lg mt-1";
             translationBox.appendChild(newTranslationDiv);
-
-            // ✅ Auto-scroll to the latest translation
             translationBox.scrollTop = translationBox.scrollHeight;
         } else {
             console.error("DeepL translation error:", translationData);
