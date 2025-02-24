@@ -6,7 +6,26 @@ const translationLang = document.getElementById("translation-language");
 
 let isRecording = false;
 let microphone;
-let socket = new WebSocket("wss://liveword.io");
+
+function createWebSocket() {
+    const ws = new WebSocket("wss://liveword.io");
+
+    ws.addEventListener("open", () => {
+        console.log("✅ Connected to WebSocket server");
+        ws.send(JSON.stringify({
+            type: "setLanguage",
+            language: transcriptionLang.value
+        }));
+    });
+
+    ws.addEventListener("close", () => {
+        console.log("❌ Disconnected from WebSocket server");
+    });
+
+    return ws;
+}
+
+let socket = createWebSocket(); // Initialize the WebSocket
 
 async function getMicrophone() {
     try {
@@ -25,6 +44,17 @@ async function openMicrophone(mic, socket) {
             recordBtn.innerHTML = `<i class="fas fa-stop"></i> Stop Listening`;
             recordBtn.classList.add("bg-red-500");
             recordBtn.classList.remove("bg-blue-500");
+
+            // ✅ Move loader logic inside mic.onstart
+            setTimeout(() => {
+                const loader = document.getElementById("loader");
+                loader.classList.remove("hidden"); // Show loader AFTER mic starts
+
+                setTimeout(() => {
+                    loader.classList.add("hidden"); // Hide loader after 5 seconds
+                }, 3000);
+            }, 0); // Ensure it runs after mic starts
+
             resolve();
         };
 
@@ -41,7 +71,7 @@ async function openMicrophone(mic, socket) {
             }
         };
 
-        mic.start(1000);
+        mic.start(200); // Reduce buffer time for faster audio streaming
     });
 }
 
@@ -50,27 +80,33 @@ async function closeMicrophone(mic) {
 }
 
 recordBtn.addEventListener("click", async () => {
+    const loader = document.getElementById("loader");
+
     if (!isRecording) {
         try {
-            // ✅ Clear previous transcription and translation on Start
-            captions.innerHTML = "";
-            translationBox.innerHTML = "";
+            loader.classList.remove("hidden"); // Show loader
+
+            if (socket.readyState !== WebSocket.OPEN) {
+                console.log("🔄 Reconnecting WebSocket...");
+                socket = createWebSocket();
+            }
 
             microphone = await getMicrophone();
-            await openMicrophone(microphone, socket);
+
+            // ✅ Keep loader visible for 5 seconds before starting transcription
+            setTimeout(async () => {
+                await openMicrophone(microphone, socket);
+                loader.classList.add("hidden"); // Hide loader after 5 seconds
+            }, 0);
         } catch (error) {
             console.error("Error opening microphone:", error);
+            loader.classList.add("hidden"); // Hide loader if an error occurs
         }
     } else {
         await closeMicrophone(microphone);
         microphone = undefined;
-
-        // ✅ Send message to WebSocket to stop Deepgram session
-        if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: "stopSession" }));
-            console.log("🛑 Deepgram session ended");
-        }
     }
+
     isRecording = !isRecording;
 });
 
@@ -94,9 +130,12 @@ transcriptionLang.addEventListener("change", () => {
 let lastTranscript = ""; // ✅ Track last processed transcript to prevent duplication
 
 socket.addEventListener("message", (event) => {
+
     if (event.data === "") return;
 
     let data;
+
+
     try {
         data = JSON.parse(event.data);
     } catch (e) {
@@ -144,6 +183,11 @@ socket.addEventListener("message", (event) => {
             }
         }
     }
+    if (data.type === "deepgram_ready") {
+        console.log("🎙️ Deepgram is ready!");
+        loader.classList.add("hidden"); // Hide loader when ready
+    }
+
 });
 
 socket.addEventListener("close", () => {
