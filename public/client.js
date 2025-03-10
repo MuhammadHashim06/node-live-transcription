@@ -6,55 +6,26 @@ const translationLang = document.getElementById("translation-language");
 
 let isRecording = false;
 let microphone;
-
-function createWebSocket() {
-    const ws = new WebSocket("wss://liveword.io");
-
-    ws.addEventListener("open", () => {
-        console.log("✅ Connected to WebSocket server");
-        ws.send(JSON.stringify({
-            type: "setLanguage",
-            language: transcriptionLang.value
-        }));
-    });
-
-    ws.addEventListener("close", () => {
-        console.log("❌ Disconnected from WebSocket server");
-    });
-
-    return ws;
-}
-
-let socket = createWebSocket(); // Initialize the WebSocket
+let socket = new WebSocket("ws://localhost:3000"); // ✅ Connect WebSocket to server
 
 async function getMicrophone() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         return new MediaRecorder(stream, { mimeType: "audio/webm" });
     } catch (error) {
-        console.error("Error accessing microphone:", error);
+        console.error("❌ Error accessing microphone:", error);
+        alert("Microphone access denied. Please allow microphone permission.");
         throw error;
     }
 }
 
-async function openMicrophone(mic, socket) {
+async function openMicrophone(mic) {
     return new Promise((resolve) => {
         mic.onstart = () => {
             console.log("🎤 Microphone started");
             recordBtn.innerHTML = `<i class="fas fa-stop"></i> Stop Listening`;
             recordBtn.classList.add("bg-red-500");
             recordBtn.classList.remove("bg-blue-500");
-
-            // ✅ Move loader logic inside mic.onstart
-            setTimeout(() => {
-                const loader = document.getElementById("loader");
-                loader.classList.remove("hidden"); // Show loader AFTER mic starts
-
-                setTimeout(() => {
-                    loader.classList.add("hidden"); // Hide loader after 5 seconds
-                }, 3000);
-            }, 0); // Ensure it runs after mic starts
-
             resolve();
         };
 
@@ -71,7 +42,7 @@ async function openMicrophone(mic, socket) {
             }
         };
 
-        mic.start(200); // Reduce buffer time for faster audio streaming
+        mic.start(1000); // ✅ Sends audio every 1 second
     });
 }
 
@@ -79,46 +50,33 @@ async function closeMicrophone(mic) {
     mic.stop();
 }
 
+// ✅ Start/Stop Button Logic
 recordBtn.addEventListener("click", async () => {
-    const loader = document.getElementById("loader");
-
     if (!isRecording) {
         try {
-            loader.classList.remove("hidden"); // Show loader
-
-            if (socket.readyState !== WebSocket.OPEN) {
-                console.log("🔄 Reconnecting WebSocket...");
-                socket = createWebSocket();
-            }
-
             microphone = await getMicrophone();
-
-            // ✅ Keep loader visible for 5 seconds before starting transcription
-            setTimeout(async () => {
-                await openMicrophone(microphone, socket);
-                loader.classList.add("hidden"); // Hide loader after 5 seconds
-            }, 0);
+            await openMicrophone(microphone);
         } catch (error) {
-            console.error("Error opening microphone:", error);
-            loader.classList.add("hidden"); // Hide loader if an error occurs
+            console.error("❌ Error opening microphone:", error);
         }
     } else {
+        // ✅ Send stop signal to the server
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "stop" }));
+        }
+
+        // ✅ Close the microphone
         await closeMicrophone(microphone);
         microphone = undefined;
-    }
 
+        // ✅ Close WebSocket (force disconnect)
+        socket.close();
+        socket = new WebSocket("ws://localhost:3000"); // ✅ Reset WebSocket for next use
+    }
     isRecording = !isRecording;
 });
 
-socket.addEventListener("open", () => {
-    console.log("✅ Connected to WebSocket server");
-
-    socket.send(JSON.stringify({
-        type: "setLanguage",
-        language: transcriptionLang.value
-    }));
-});
-
+// ✅ Send Selected Transcription Language to Server
 transcriptionLang.addEventListener("change", () => {
     const selectedLang = transcriptionLang.value;
     if (socket.readyState === WebSocket.OPEN) {
@@ -127,99 +85,54 @@ transcriptionLang.addEventListener("change", () => {
     }
 });
 
-let lastTranscript = ""; // ✅ Track last processed transcript to prevent duplication
-
+// ✅ Handle WebSocket Messages (Real-time Updates)
 socket.addEventListener("message", (event) => {
-
     if (event.data === "") return;
 
     let data;
-
-
     try {
         data = JSON.parse(event.data);
     } catch (e) {
-        console.error("Failed to parse JSON:", e);
+        console.error("❌ Failed to parse JSON:", e);
         return;
     }
 
-    if (data && data.channel && data.channel.alternatives.length > 0) {
-        const transcript = data.channel.alternatives[0].transcript;
-        const isFinal = data.is_final || false; // ✅ Only process final transcriptions
+    let lastSentenceDiv = captions.lastElementChild;
 
-        if (!transcript || transcript === lastTranscript) return; // ✅ Prevent duplication
-        lastTranscript = transcript; // ✅ Update last transcript
-
-        if (captions.innerHTML.trim() === "Waiting for speech input...") {
-            captions.innerHTML = "";
-        }
-        if (translationBox.innerHTML.trim() === "Translation will appear here...") {
-            translationBox.innerHTML = "";
-        }
-
-        const sentenceEndings = [".", "!", "?", "…", ":", ";", "—", "。", "！", "？"];
-        let lastChar = transcript.slice(-1);
-        let isSentenceComplete = sentenceEndings.includes(lastChar);
-
-        if (isFinal || isSentenceComplete) {
-            // ✅ Append only final sentences to prevent duplication
-            let newTranscriptionDiv = document.createElement("div");
-            newTranscriptionDiv.innerText = transcript;
-            newTranscriptionDiv.className = "transcription-sentence bg-gray-600 p-2 rounded-lg mt-1";
-            captions.appendChild(newTranscriptionDiv);
-            captions.scrollTop = captions.scrollHeight;
-
-            sendToDeepL(transcript);
-        } else {
-            // ✅ Update ongoing sentence in real-time (intermediate)
-            let lastSentenceDiv = captions.lastElementChild;
-            if (lastSentenceDiv) {
-                lastSentenceDiv.innerText = transcript;
+    if (data.transcript) {
+        if (!data.is_final) {
+            // ✅ Live update: Update or create a placeholder for the ongoing transcription
+            if (lastSentenceDiv && lastSentenceDiv.dataset.type === "interim") {
+                lastSentenceDiv.innerText = data.transcript;
             } else {
                 let newTranscriptionDiv = document.createElement("div");
-                newTranscriptionDiv.innerText = transcript;
-                newTranscriptionDiv.className = "transcription-sentence bg-gray-600 p-2 rounded-lg mt-1";
+                newTranscriptionDiv.innerText = data.transcript;
+                newTranscriptionDiv.className = "transcription-sentence";
+                newTranscriptionDiv.dataset.type = "interim"; // Mark as temporary
                 captions.appendChild(newTranscriptionDiv);
             }
+        } else {
+            // ✅ Final result: Remove interim and add final transcript
+            if (lastSentenceDiv && lastSentenceDiv.dataset.type === "interim") {
+                captions.removeChild(lastSentenceDiv); // Remove interim
+            }
+            let newFinalTranscriptionDiv = document.createElement("div");
+            newFinalTranscriptionDiv.innerText = data.transcript;
+            newFinalTranscriptionDiv.className = "transcription-sentence";
+            captions.appendChild(newFinalTranscriptionDiv);
+            captions.scrollTop = captions.scrollHeight;
         }
     }
-    if (data.type === "deepgram_ready") {
-        console.log("🎙️ Deepgram is ready!");
-        loader.classList.add("hidden"); // Hide loader when ready
-    }
 
+    if (data.translation) {
+        const newTranslationDiv = document.createElement("div");
+        newTranslationDiv.innerText = data.translation;
+        newTranslationDiv.className = "translation-sentence";
+        translationBox.appendChild(newTranslationDiv);
+        translationBox.scrollTop = translationBox.scrollHeight;
+    }
 });
 
 socket.addEventListener("close", () => {
     console.log("❌ Disconnected from WebSocket server");
 });
-
-async function sendToDeepL(text) {
-    const targetLang = translationLang.value;
-    try {
-        const response = await fetch("/api/translate", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                text: text,
-                target_lang: targetLang
-            })
-        });
-
-        const translationData = await response.json();
-
-        if (translationData.translations && translationData.translations.length > 0) {
-            let newTranslationDiv = document.createElement("div");
-            newTranslationDiv.innerText = translationData.translations[0].text;
-            newTranslationDiv.className = "translation-sentence bg-gray-600 p-2 rounded-lg mt-1";
-            translationBox.appendChild(newTranslationDiv);
-            translationBox.scrollTop = translationBox.scrollHeight;
-        } else {
-            console.error("DeepL translation error:", translationData);
-        }
-    } catch (error) {
-        console.error("DeepL API error:", error);
-    }
-}
