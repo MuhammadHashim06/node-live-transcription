@@ -6,7 +6,9 @@ const translationLang = document.getElementById("translation-language");
 
 let isRecording = false;
 let microphone;
-let socket = new WebSocket("ws://localhost:3000"); // ✅ Connect WebSocket to server
+let socket = new WebSocket(
+    window.location.protocol === "https:" ? "wss://liveword.io" : "ws://localhost:3000"
+);
 
 async function getMicrophone() {
     try {
