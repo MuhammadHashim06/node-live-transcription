@@ -65,11 +65,17 @@ recordBtn.addEventListener("click", async () => {
         // ✅ Send stop signal to the server
         if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: "stop" }));
-            setTimeout(() => {
-                socket.close();
-            }, 500); // Allow server to process the stop request
-        }
-    }
+        }
+
+        // ✅ Close the microphone
+        await closeMicrophone(microphone);
+        microphone = undefined;
+
+        // ✅ Close WebSocket (force disconnect)
+        socket.close();
+        socket = new WebSocket(    window.location.protocol === "https:" ? "wss://liveword.io" : "ws://localhost:3000"
+        ); // ✅ Reset WebSocket for next use
+    }
     isRecording = !isRecording;
 });
 
