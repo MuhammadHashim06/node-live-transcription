@@ -65,16 +65,11 @@ recordBtn.addEventListener("click", async () => {
         // ✅ Send stop signal to the server
         if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: "stop" }));
-        }
-
-        // ✅ Close the microphone
-        await closeMicrophone(microphone);
-        microphone = undefined;
-
-        // ✅ Close WebSocket (force disconnect)
-        socket.close();
-        socket = new WebSocket("ws://localhost:3000"); // ✅ Reset WebSocket for next use
-    }
+            setTimeout(() => {
+                socket.close();
+            }, 500); // Allow server to process the stop request
+        }
+    }
     isRecording = !isRecording;
 });
 
