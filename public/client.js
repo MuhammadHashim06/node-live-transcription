@@ -6,14 +6,31 @@ const translationLang = document.getElementById("translation-language");
 
 let isRecording = false;
 let microphone;
-let socket = new WebSocket(
-    window.location.protocol === "https:" ? "wss://liveword.io" : "ws://localhost:3000"
-);
+let socket;
 
+// ✅ Function to create a new WebSocket connection
+function createWebSocket() {
+    return new WebSocket(
+        window.location.protocol === "https:" ? "wss://liveword.io" : "ws://localhost:3000"
+    );
+}
+
+// ✅ Update UI State
+function updateUI(isActive) {
+    transcriptionLang.disabled = isActive;
+    translationLang.disabled = isActive;
+    recordBtn.innerHTML = isActive
+        ? `<i class="fas fa-stop"></i> Stop Listening`
+        : `<i class="fas fa-microphone"></i> Start Listening`;
+    recordBtn.classList.toggle("bg-red-500", isActive);
+    recordBtn.classList.toggle("bg-blue-500", !isActive);
+}
+
+// ✅ Get User Microphone Access
 async function getMicrophone() {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        return new MediaRecorder(stream, { mimeType: "audio/webm" });
+        const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+        return new MediaRecorder(stream, {mimeType: "audio/webm"});
     } catch (error) {
         console.error("❌ Error accessing microphone:", error);
         alert("Microphone access denied. Please allow microphone permission.");
@@ -21,21 +38,18 @@ async function getMicrophone() {
     }
 }
 
+// ✅ Open Microphone and Start Recording
 async function openMicrophone(mic) {
     return new Promise((resolve) => {
         mic.onstart = () => {
             console.log("🎤 Microphone started");
-            recordBtn.innerHTML = `<i class="fas fa-stop"></i> Stop Listening`;
-            recordBtn.classList.add("bg-red-500");
-            recordBtn.classList.remove("bg-blue-500");
+            updateUI(true);
             resolve();
         };
 
         mic.onstop = () => {
             console.log("🎤 Microphone stopped");
-            recordBtn.innerHTML = `<i class="fas fa-microphone"></i> Start Listening`;
-            recordBtn.classList.add("bg-blue-500");
-            recordBtn.classList.remove("bg-red-500");
+            updateUI(false);
         };
 
         mic.ondataavailable = (event) => {
@@ -48,14 +62,34 @@ async function openMicrophone(mic) {
     });
 }
 
+// ✅ Close Microphone
 async function closeMicrophone(mic) {
-    mic.stop();
+    if (mic) {
+        mic.stop();
+    }
 }
 
 // ✅ Start/Stop Button Logic
 recordBtn.addEventListener("click", async () => {
     if (!isRecording) {
         try {
+            socket = createWebSocket();
+            socket.onopen = () => {
+                console.log("✅ WebSocket Connected");
+
+                // ✅ Send selected transcription and translation languages
+                socket.send(
+                    JSON.stringify({
+                        type: "setLanguage",
+                        language: transcriptionLang.value,  // ✅ Send selected STT language
+                        targetLanguage: translationLang.value,  // ✅ Send selected translation language
+                    })
+                );
+            };
+
+            socket.onmessage = handleSocketMessage;
+            socket.onclose = () => console.log("❌ Disconnected from WebSocket server");
+
             microphone = await getMicrophone();
             await openMicrophone(microphone);
         } catch (error) {
@@ -64,32 +98,22 @@ recordBtn.addEventListener("click", async () => {
     } else {
         // ✅ Send stop signal to the server
         if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: "stop" }));
+            socket.send(JSON.stringify({type: "stop"}));
         }
 
-        // ✅ Close the microphone
+        // ✅ Close microphone
         await closeMicrophone(microphone);
-        microphone = undefined;
+        microphone = null;
 
         // ✅ Close WebSocket (force disconnect)
         socket.close();
-        socket = new WebSocket(    window.location.protocol === "https:" ? "wss://liveword.io" : "ws://localhost:3000"
-        ); // ✅ Reset WebSocket for next use
+        console.log("🔌 WebSocket closed.");
     }
     isRecording = !isRecording;
 });
 
-// ✅ Send Selected Transcription Language to Server
-transcriptionLang.addEventListener("change", () => {
-    const selectedLang = transcriptionLang.value;
-    if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "setLanguage", language: selectedLang }));
-        console.log(`🌐 Transcription language changed to: ${selectedLang}`);
-    }
-});
-
-// ✅ Handle WebSocket Messages (Real-time Updates)
-socket.addEventListener("message", (event) => {
+// ✅ Handle WebSocket Messages
+function handleSocketMessage(event) {
     if (event.data === "") return;
 
     let data;
@@ -100,42 +124,41 @@ socket.addEventListener("message", (event) => {
         return;
     }
 
-    let lastSentenceDiv = captions.lastElementChild;
-
+    // ✅ Handle Transcription
     if (data.transcript) {
+        let lastSentenceDiv = captions.lastElementChild;
+
         if (!data.is_final) {
-            // ✅ Live update: Update or create a placeholder for the ongoing transcription
             if (lastSentenceDiv && lastSentenceDiv.dataset.type === "interim") {
                 lastSentenceDiv.innerText = data.transcript;
             } else {
                 let newTranscriptionDiv = document.createElement("div");
                 newTranscriptionDiv.innerText = data.transcript;
                 newTranscriptionDiv.className = "transcription-sentence";
-                newTranscriptionDiv.dataset.type = "interim"; // Mark as temporary
+                newTranscriptionDiv.dataset.type = "interim";
                 captions.appendChild(newTranscriptionDiv);
             }
         } else {
-            // ✅ Final result: Remove interim and add final transcript
             if (lastSentenceDiv && lastSentenceDiv.dataset.type === "interim") {
-                captions.removeChild(lastSentenceDiv); // Remove interim
+                captions.removeChild(lastSentenceDiv);
             }
-            let newFinalTranscriptionDiv = document.createElement("div");
-            newFinalTranscriptionDiv.innerText = data.transcript;
-            newFinalTranscriptionDiv.className = "transcription-sentence";
-            captions.appendChild(newFinalTranscriptionDiv);
-            captions.scrollTop = captions.scrollHeight;
+
+            let finalSentenceDiv = document.createElement("div");
+            finalSentenceDiv.innerText = data.transcript;
+            finalSentenceDiv.className = "transcription-sentence";
+            captions.appendChild(finalSentenceDiv);
         }
+
+        captions.scrollTop = captions.scrollHeight; // ✅ Auto-scroll
     }
 
+    // ✅ Handle Translation
     if (data.translation) {
-        const newTranslationDiv = document.createElement("div");
+        console.log("📌 Received Translation:", data.translation); // ✅ Debugging Log
+        let newTranslationDiv = document.createElement("div");
         newTranslationDiv.innerText = data.translation;
         newTranslationDiv.className = "translation-sentence";
         translationBox.appendChild(newTranslationDiv);
-        translationBox.scrollTop = translationBox.scrollHeight;
+        translationBox.scrollTop = translationBox.scrollHeight; // ✅ Auto-scroll for translations
     }
-});
-
-socket.addEventListener("close", () => {
-    console.log("❌ Disconnected from WebSocket server");
-});
+}

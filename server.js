@@ -1,11 +1,11 @@
 import express from "express";
 import http from "http";
-import { WebSocketServer } from "ws";
-import { SpeechClient } from "@google-cloud/speech";
+import {WebSocketServer} from "ws";
+import {SpeechClient} from "@google-cloud/speech";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import path from "path";
-import { fileURLToPath } from "url";
+import {fileURLToPath} from "url";
 
 dotenv.config();
 
@@ -14,14 +14,12 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({server});
 
 const speechClient = new SpeechClient();
 const PORT = process.env.PORT || 3000;
 
-// ✅ Serve static files
 app.use(express.static(path.join(__dirname, "public")));
-
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
@@ -29,104 +27,105 @@ app.get("/", (req, res) => {
 wss.on("connection", (ws) => {
     console.log("✅ WebSocket client connected");
     let recognizeStream;
-
-    async function startRecognitionStream() {
-        recognizeStream = speechClient
-            .streamingRecognize({
-                config: {
-                    encoding: "WEBM_OPUS",
-                    sampleRateHertz: 16000,
-                    languageCode: "en-US",
-                    enableAutomaticPunctuation: true,
-                },
-                interimResults: true
-            })
-            .on("error", (err) => console.error("❌ Google STT Error:", err))
-            .on("data", async (data) => {
-                const transcript = data.results[0]?.alternatives[0]?.transcript || "";
-                const isFinal = data.results[0]?.isFinal || false;
-
-                if (transcript) {
-                    console.log(`🔊 Transcribed: ${transcript} (Final: ${isFinal})`);
-                    ws.send(JSON.stringify({ transcript, is_final: isFinal }));
-
-                    if (isFinal) {
-                        const translation = await translateText(transcript);
-                        ws.send(JSON.stringify({ translation }));
-                    }
-                }
-            });
-    }
+    let transcriptionLang = "en-US";  // ✅ Default to English
+    let targetLang = "en";  // ✅ Default translation language
 
     ws.on("message", (message) => {
         try {
-            const messageString = message.toString();
+            const messageString = message.toString().trim();
 
-            // ✅ Check if message is JSON (starts with '{' and ends with '}')
-            if (messageString.trim().startsWith("{") && messageString.trim().endsWith("}")) {
+            // ✅ If message is JSON, handle control messages
+            if (messageString.startsWith("{") && messageString.endsWith("}")) {
                 const msg = JSON.parse(messageString);
 
-                if (msg.type === "stop") {
-                    console.log("🛑 Stop signal received from client.");
+                if (msg.type === "setLanguage") {
+                    console.log(`🌐 Transcription: ${msg.language}, Translation: ${msg.targetLanguage}`);
+                    transcriptionLang = msg.language; // ✅ Update STT language
+                    targetLang = msg.targetLanguage; // ✅ Update translation language
+                    return;
+                }
 
-                    // ✅ Close Google STT Stream
+                if (msg.type === "stop") {
                     if (recognizeStream) {
                         recognizeStream.end();
-                        recognizeStream = null;
-                        console.log("🔌 Google STT Stream closed.");
+                        recognizeStream = null; // ✅ Ensure old stream is removed
                     }
-
-                    // ✅ Close WebSocket Connection
                     ws.close();
-                    console.log("🔌 WebSocket closed.");
+                    return;
                 }
             } else {
+                // ✅ This must be raw audio data, send it to STT
                 console.log("🎤 Received WebSocket audio data");
 
                 if (!recognizeStream) {
-                    console.log("📡 Starting Google STT stream...");
-                    startRecognitionStream();
+                    console.log(`📡 Starting Google STT stream for language: ${transcriptionLang}...`);
+                    recognizeStream = speechClient.streamingRecognize({
+                        config: {
+                            encoding: "WEBM_OPUS",
+                            sampleRateHertz: 16000,
+                            languageCode: transcriptionLang,
+                            enableAutomaticPunctuation: true,
+                            speechContexts: [{phrases: [".", "?", "!", "okay", "next", "done"]}], // ✅ Helps finalize sentences faster
+                            model: "latest_long",
+                            singleUtterance: false, // ✅ Ensures smooth continuous speech
+                        },
+                        interimResults: true,
+                    }).on("data", async (data) => {
+                        const transcript = data.results[0]?.alternatives[0]?.transcript || "";
+                        if (transcript) {
+                            ws.send(JSON.stringify({transcript, is_final: data.results[0]?.isFinal}));
+
+                            if (data.results[0]?.isFinal) {
+                                const translation = await translateText(transcript, targetLang);
+                                ws.send(JSON.stringify({translation}));
+                            }
+                        }
+                    });
                 }
 
-                // ✅ Send raw audio to Google STT
+                // ✅ Send raw audio data to Google STT
                 if (recognizeStream) recognizeStream.write(message);
             }
         } catch (error) {
-            console.error("❌ Error processing WebSocket message:", error);
+            console.error("❌ Error processing message:", error);
         }
     });
 
     ws.on("close", () => {
         console.log("🔌 WebSocket client disconnected");
-
         if (recognizeStream) {
             recognizeStream.end();
             recognizeStream = null;
-            console.log("🔌 Google STT Stream closed.");
         }
     });
 });
 
-// ✅ DeepL Translation Function
-async function translateText(text) {
+async function translateText(text, lang) {
     try {
+        console.log(`🌍 Sending text for translation: "${text}" → ${lang}`); // ✅ Log translation request
+
         const response = await fetch("https://api.deepl.com/v2/translate", {
             method: "POST",
             headers: {
                 "Authorization": `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({ text: [text], target_lang: "ES" }),
+            body: JSON.stringify({ text: [text], target_lang: lang }),
         });
 
         const data = await response.json();
+        console.log("🔍 DeepL API Response:", JSON.stringify(data, null, 2)); // ✅ Log full API response
+
+        if (!data.translations || data.translations.length === 0) {
+            console.error("❌ No translation returned.");
+            return "Translation unavailable.";
+        }
+
         return data.translations[0].text;
     } catch (error) {
-        console.error("❌ DeepL Translation Error:", error);
-        return "Translation Error";
+        console.error("❌ DeepL Translation API Error:", error);
+        return "Translation error.";
     }
 }
 
-server.listen(3000, "0.0.0.0", () => {
-    console.log("✅ Server is listening on port 3000");
-});
+server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
