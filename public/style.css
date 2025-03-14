@@ -149,24 +149,25 @@ footer a {
 
 .transcription-sentence {
   display: block;
-  background-color: #f0f0f0; /* Light grey */
-  color: black;
-  padding: 10px;
-  margin-bottom: 5px;
-  border-radius: 10px;
-  font-size: 16px;
-  font-weight: 500;
-  width: fit-content;
+  background-color: #3b3b3b !important; /* Dark Grey */
+  color: white !important;
+  padding: 10px !important;
+  margin-bottom: 5px !important;
+  border-radius: 10px !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  width: fit-content !important;
 }
+
 
 .translation-sentence {
   display: block;
-  background-color: #d4edda; /* Light green */
-  color: black;
-  padding: 10px;
-  margin-bottom: 5px;
-  border-radius: 10px;
-  font-size: 16px;
-  font-weight: 500;
-  width: fit-content;
+  background-color: #3b3b3b !important; /* Dark Grey */
+  color: white !important;
+  padding: 10px !important;
+  margin-bottom: 5px !important;
+  border-radius: 10px !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  width: fit-content !important;
 }

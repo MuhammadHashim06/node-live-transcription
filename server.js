@@ -59,25 +59,53 @@ wss.on("connection", (ws) => {
 
                 if (!recognizeStream) {
                     console.log(`📡 Starting Google STT stream for language: ${transcriptionLang}...`);
+                    let finalizationTimeout = null; // ✅ Timeout tracker
+                    const FORCE_FINALIZATION_DELAY = 5000; // ✅ 5 seconds delay
+
                     recognizeStream = speechClient.streamingRecognize({
                         config: {
                             encoding: "WEBM_OPUS",
                             sampleRateHertz: 16000,
                             languageCode: transcriptionLang,
                             enableAutomaticPunctuation: true,
-                            speechContexts: [{phrases: [".", "?", "!", "okay", "next", "done"]}], // ✅ Helps finalize sentences faster
-                            model: "latest_long",
-                            singleUtterance: false, // ✅ Ensures smooth continuous speech
+                            speechContexts: [{phrases: [".", "?", "!", "okay", "next", "done"]}], // ✅ Helps finalize sentences faster (English only)
+                            maxAlternatives: 1,
+                            model: "default",
+                            singleUtterance: false,
                         },
                         interimResults: true,
                     }).on("data", async (data) => {
                         const transcript = data.results[0]?.alternatives[0]?.transcript || "";
-                        if (transcript) {
-                            ws.send(JSON.stringify({transcript, is_final: data.results[0]?.isFinal}));
+                        const isFinal = data.results[0]?.isFinal || false;
 
-                            if (data.results[0]?.isFinal) {
+                        if (transcript) {
+                            console.log(`🔊 Transcript: ${transcript} (Final: ${isFinal})`);
+
+                            // ✅ Send normal interim/final transcript
+                            ws.send(JSON.stringify({transcript, is_final: isFinal}));
+
+                            if (isFinal) {
+                                console.log("✅ Final transcript received, translating...");
                                 const translation = await translateText(transcript, targetLang);
                                 ws.send(JSON.stringify({translation}));
+
+                                // ✅ Reset the forced finalization timer when a final result is received
+                                if (finalizationTimeout) clearTimeout(finalizationTimeout);
+                            } else if (transcriptionLang === "sv-SE" || transcriptionLang === "fi-FI") {
+                                // ✅ Start a timeout to force finalization **only if no final result comes in**
+                                if (!finalizationTimeout) {
+                                    finalizationTimeout = setTimeout(async () => {
+                                        console.log("⏳ No final transcript received for 3 seconds, forcing finalization...");
+                                        ws.send(JSON.stringify({transcript, is_final: true}));
+
+                                        const translation = await translateText(transcript, targetLang);
+                                        ws.send(JSON.stringify({translation}));
+                                        console.log(`📤 Forced finalization, sent translation: "${translation}"`);
+
+                                        // ✅ Reset timeout after forcing finalization
+                                        finalizationTimeout = null;
+                                    }, FORCE_FINALIZATION_DELAY);
+                                }
                             }
                         }
                     });
@@ -110,7 +138,7 @@ async function translateText(text, lang) {
                 "Authorization": `DeepL-Auth-Key ${process.env.DEEPL_API_KEY}`,
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({ text: [text], target_lang: lang }),
+            body: JSON.stringify({text: [text], target_lang: lang}),
         });
 
         const data = await response.json();
