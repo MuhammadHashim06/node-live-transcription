@@ -23,6 +23,11 @@ app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
+app.get("/translation", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "translation", "translation.html"));
+});
+
+const clients = new Map();
 
 wss.on("connection", (ws) => {
     console.log("✅ WebSocket client connected");
@@ -30,18 +35,77 @@ wss.on("connection", (ws) => {
     let transcriptionLang = "en-US";  // ✅ Default to English
     let targetLang = "en";  // ✅ Default translation language
 
+    const startRecognitionStream = () => {
+        console.log(`📡 Starting Google STT stream for language: ${transcriptionLang}...`);
+        recognizeStream = speechClient.streamingRecognize({
+            config: {
+                encoding: "WEBM_OPUS",
+                sampleRateHertz: 16000,
+                languageCode: transcriptionLang,
+                enableAutomaticPunctuation: true,
+                speechContexts: [{phrases: [".", "?", "!", "okay", "next", "done"]}], // ✅ Helps finalize sentences faster (English only)
+                maxAlternatives: 1,
+                model: "default",
+                singleUtterance: false,
+            },
+            interimResults: true,
+        });
+
+        recognizeStream.on("data", async (data) => {
+            const transcript = data.results[0]?.alternatives[0]?.transcript || "";
+            const isFinal = data.results[0]?.isFinal || false;
+
+            if (transcript) {
+                console.log(`🔊 Transcript: ${transcript} (Final: ${isFinal})`);
+
+                // ✅ Send normal interim/final transcript
+                ws.send(JSON.stringify({transcript, is_final: isFinal}));
+
+                if (isFinal) {
+                    console.log("✅ Final transcript received, translating...");
+                    if(!targetLang) {
+                        console.log("❌ No target language set for translation");
+                    } else {
+                        // ✅ Broadcast translation to all clients based on their selected language
+                        for (const [client, lang] of clients.entries()) {
+                            const translation = await translateText(transcript, lang);
+                            client.send(JSON.stringify({type: "translation", translation}));
+                        }
+                    }
+                }
+            }
+        });
+
+        recognizeStream.on("error", (error) => {
+            console.error("❌ Recognize Stream Error:", error);
+            if (error.code === 11) { // Exceeded maximum allowed stream duration
+                console.log("🔄 Restarting recognize stream due to duration limit...");
+                startRecognitionStream();
+            } else {
+                ws.send(JSON.stringify({error: "Speech recognition error"}));
+                recognizeStream.end();
+                recognizeStream = null;
+            }
+        });
+    };
+
     ws.on("message", (message) => {
         try {
             const messageString = message.toString().trim();
-
             // ✅ If message is JSON, handle control messages
             if (messageString.startsWith("{") && messageString.endsWith("}")) {
                 const msg = JSON.parse(messageString);
 
                 if (msg.type === "setLanguage") {
-                    console.log(`🌐 Transcription: ${msg.language}, Translation: ${msg.targetLanguage}`);
+                    console.log(`🌐 Transcription: ${msg.language}`);
                     transcriptionLang = msg.language; // ✅ Update STT language
+                    return;
+                }
+                if (msg.type === "setTranslation") {
+                    console.log(`🌐 Translation: ${msg.targetLanguage}`);
                     targetLang = msg.targetLanguage; // ✅ Update translation language
+                    clients.set(ws, targetLang); // ✅ Store client's target language
+                    console.log("🔗 Client added to translation map",targetLang);
                     return;
                 }
 
@@ -50,6 +114,7 @@ wss.on("connection", (ws) => {
                         recognizeStream.end();
                         recognizeStream = null; // ✅ Ensure old stream is removed
                     }
+                    clients.delete(ws); // ✅ Remove client from the map
                     ws.close();
                     return;
                 }
@@ -58,57 +123,7 @@ wss.on("connection", (ws) => {
                 console.log("🎤 Received WebSocket audio data");
 
                 if (!recognizeStream) {
-                    console.log(`📡 Starting Google STT stream for language: ${transcriptionLang}...`);
-                    let finalizationTimeout = null; // ✅ Timeout tracker
-                    const FORCE_FINALIZATION_DELAY = 5000; // ✅ 5 seconds delay
-
-                    recognizeStream = speechClient.streamingRecognize({
-                        config: {
-                            encoding: "WEBM_OPUS",
-                            sampleRateHertz: 16000,
-                            languageCode: transcriptionLang,
-                            enableAutomaticPunctuation: true,
-                            speechContexts: [{phrases: [".", "?", "!", "okay", "next", "done"]}], // ✅ Helps finalize sentences faster (English only)
-                            maxAlternatives: 1,
-                            model: "default",
-                            singleUtterance: false,
-                        },
-                        interimResults: true,
-                    }).on("data", async (data) => {
-                        const transcript = data.results[0]?.alternatives[0]?.transcript || "";
-                        const isFinal = data.results[0]?.isFinal || false;
-
-                        if (transcript) {
-                            console.log(`🔊 Transcript: ${transcript} (Final: ${isFinal})`);
-
-                            // ✅ Send normal interim/final transcript
-                            ws.send(JSON.stringify({transcript, is_final: isFinal}));
-
-                            if (isFinal) {
-                                console.log("✅ Final transcript received, translating...");
-                                const translation = await translateText(transcript, targetLang);
-                                ws.send(JSON.stringify({translation}));
-
-                                // ✅ Reset the forced finalization timer when a final result is received
-                                if (finalizationTimeout) clearTimeout(finalizationTimeout);
-                            } else if (transcriptionLang === "sv-SE" || transcriptionLang === "fi-FI") {
-                                // ✅ Start a timeout to force finalization **only if no final result comes in**
-                                if (!finalizationTimeout) {
-                                    finalizationTimeout = setTimeout(async () => {
-                                        console.log("⏳ No final transcript received for 3 seconds, forcing finalization...");
-                                        ws.send(JSON.stringify({transcript, is_final: true}));
-
-                                        const translation = await translateText(transcript, targetLang);
-                                        ws.send(JSON.stringify({translation}));
-                                        console.log(`📤 Forced finalization, sent translation: "${translation}"`);
-
-                                        // ✅ Reset timeout after forcing finalization
-                                        finalizationTimeout = null;
-                                    }, FORCE_FINALIZATION_DELAY);
-                                }
-                            }
-                        }
-                    });
+                    startRecognitionStream();
                 }
 
                 // ✅ Send raw audio data to Google STT
@@ -125,6 +140,7 @@ wss.on("connection", (ws) => {
             recognizeStream.end();
             recognizeStream = null;
         }
+        clients.delete(ws); // ✅ Remove client from the map
     });
 });
 

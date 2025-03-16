@@ -2,7 +2,7 @@ const captions = document.getElementById("captions");
 const translationBox = document.getElementById("translation-box");
 const recordBtn = document.getElementById("record-btn");
 const transcriptionLang = document.getElementById("transcription-language");
-const translationLang = document.getElementById("translation-language");
+// const translationLang = document.getElementById("translation-language");
 
 let isRecording = false;
 let microphone;
@@ -18,7 +18,7 @@ function createWebSocket() {
 // ✅ Update UI State
 function updateUI(isActive) {
     transcriptionLang.disabled = isActive;
-    translationLang.disabled = isActive;
+    // translationLang.disabled = isActive;
     recordBtn.innerHTML = isActive
         ? `<i class="fas fa-stop"></i> Stop Listening`
         : `<i class="fas fa-microphone"></i> Start Listening`;
@@ -82,7 +82,6 @@ recordBtn.addEventListener("click", async () => {
                     JSON.stringify({
                         type: "setLanguage",
                         language: transcriptionLang.value,  // ✅ Send selected STT language
-                        targetLanguage: translationLang.value,  // ✅ Send selected translation language
                     })
                 );
             };
@@ -162,3 +161,4 @@ function handleSocketMessage(event) {
         translationBox.scrollTop = translationBox.scrollHeight; // ✅ Auto-scroll for translations
     }
 }
+
