@@ -2,7 +2,6 @@ const captions = document.getElementById("captions");
 const translationBox = document.getElementById("translation-box");
 const recordBtn = document.getElementById("record-btn");
 const transcriptionLang = document.getElementById("transcription-language");
-// const translationLang = document.getElementById("translation-language");
 
 let isRecording = false;
 let microphone;
@@ -20,8 +19,8 @@ function updateUI(isActive) {
     transcriptionLang.disabled = isActive;
     // translationLang.disabled = isActive;
     recordBtn.innerHTML = isActive
-        ? `<i class="fas fa-stop"></i> Stop Listening`
-        : `<i class="fas fa-microphone"></i> Start Listening`;
+        ? `<i class="fas fa-stop"></i> <span class="sm:block hidden">Stop Listening</span>`
+        : `<i class="fas fa-microphone"></i> <span class="sm:block hidden">Start Listening</span>`;
     recordBtn.classList.toggle("bg-red-500", isActive);
     recordBtn.classList.toggle("bg-blue-500", !isActive);
 }

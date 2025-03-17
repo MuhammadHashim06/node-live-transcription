@@ -2,6 +2,7 @@ import express from "express";
 import http from "http";
 import {WebSocketServer} from "ws";
 import {SpeechClient} from "@google-cloud/speech";
+import {TextToSpeechClient} from "@google-cloud/text-to-speech"; // ✅ Import Text-to-Speech client
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import path from "path";
@@ -17,6 +18,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({server});
 
 const speechClient = new SpeechClient();
+const ttsClient = new TextToSpeechClient(); // ✅ Initialize Text-to-Speech client
 const PORT = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, "public")));
@@ -70,6 +72,11 @@ wss.on("connection", (ws) => {
                         for (const [client, lang] of clients.entries()) {
                             const translation = await translateText(transcript, lang);
                             client.send(JSON.stringify({type: "translation", translation}));
+                            const ttsAudio = await synthesizeSpeech(translation, lang); // ✅ Generate TTS audio
+                            if (ttsAudio) {
+                                console.log("🔊 Sending TTS audio to client",ttsAudio);
+                                client.send(ttsAudio, {binary: true}); // ✅ Send TTS audio to client as binary data
+                            }
                         }
                     }
                 }
@@ -169,6 +176,21 @@ async function translateText(text, lang) {
     } catch (error) {
         console.error("❌ DeepL Translation API Error:", error);
         return "Translation error.";
+    }
+}
+
+async function synthesizeSpeech(text, lang) {
+    try {
+        const [response] = await ttsClient.synthesizeSpeech({
+            input: {text},
+            voice: {languageCode: lang, ssmlGender: "NEUTRAL"},
+            audioConfig: {audioEncoding: "MP3"},
+        });
+        console.log("🔊 TTS audio generated");
+        return response.audioContent;
+    } catch (error) {
+        console.error("❌ TTS Error:", error);
+        return null;
     }
 }
 
