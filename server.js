@@ -43,15 +43,28 @@ wss.on("connection", (ws) => {
             config: {
                 encoding: "WEBM_OPUS",
                 sampleRateHertz: 16000,
-                languageCode: transcriptionLang,
+                languageCode: transcriptionLang, // "en-US", "sv-SE", or "fi-FI"
                 enableAutomaticPunctuation: true,
-                speechContexts: [{phrases: [".", "?", "!", "okay", "next", "done"]}], // ✅ Helps finalize sentences faster (English only)
+                useEnhanced: true, // ✅ Use Google's best model
+                model: transcriptionLang === "en-US" ? "default" : "latest_long", 
+                speechContexts: [
+                    {
+                        phrases: transcriptionLang == "sv-SE"
+                            ? ["Hej", "tack", "snälla", "förlåt", "okej", "nästa", "klart", "slut"]
+                            : transcriptionLang == "fi-FI"
+                            ? ["hei", "kiitos", "seuraava", "valmis", "loppu"]
+                            : ["hello", "okay", "next", "done"],
+                        boost: 20.0 // ✅ Stronger boost for common words
+                    }
+                ],
                 maxAlternatives: 1,
-                model: "default",
                 singleUtterance: false,
             },
+            
             interimResults: true,
         });
+        
+        
 
         recognizeStream.on("data", async (data) => {
             const transcript = data.results[0]?.alternatives[0]?.transcript || "";

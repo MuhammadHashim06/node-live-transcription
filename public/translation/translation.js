@@ -8,6 +8,7 @@ const playBtn=document.getElementById("play-btn");
 let socket;
 let audioQueue = []; // Queue to handle audio messages
 let userInteracted = false; // Ensure user interaction
+let isPlayingAudio = false; // Flag to indicate if an audio is currently playing
 
 
 
@@ -128,16 +129,20 @@ function playAudio(blob) {
 
 // ✅ Function to play the next audio in the queue
 function playNextAudio() {
-    console.log("🔊 Playing next TTS audio",userInteracted);
-    if (audioQueue.length === 0 || !userInteracted) return; // Ensure user interaction
+    console.log("🔊 Playing next TTS audio", userInteracted);
+    if (audioQueue.length === 0 || !userInteracted || isPlayingAudio) return; // Ensure user interaction and no audio is currently playing
     const blob = audioQueue.shift();
     const audioUrl = URL.createObjectURL(blob);
     const audio = new Audio(audioUrl);
-    audio.play().then(() => {
+    isPlayingAudio = true; // Set flag to indicate audio is playing
+    audio.onended = () => {
         console.log("🔊 Finished playing TTS audio");
-        setTimeout(playNextAudio, 500); // Add a delay before playing the next audio
-    }).catch((error) => {
+        isPlayingAudio = false; // Reset flag when audio finishes
+        setTimeout(playNextAudio, 1000); // Add a delay before playing the next audio
+    };
+    audio.play().catch((error) => {
         console.error("❌ Error playing TTS audio:", error);
-        setTimeout(playNextAudio, 500); // Add a delay before trying to play the next audio
+        isPlayingAudio = false; // Reset flag if there's an error
+        setTimeout(playNextAudio, 1000); // Add a delay before trying to play the next audio
     });
 }
