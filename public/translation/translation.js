@@ -26,13 +26,13 @@ window.onload = () => {
         if(userInteracted){
             console.log("🔇 Disabling Audio");
             userInteracted = false;
-            playBtn.innerHTML = `<i class="fa-solid fa-volume-high"></i><span class="sm:block hidden">Enable TTS</span>`
+            playBtn.innerHTML = `<i class="fa-solid fa-volume-high"></i><span >Enable TTS</span>`
             playBtn.classList.remove("bg-red-500");
             playBtn.classList.add("bg-blue-500");
         }else{
             console.log("🔊 Enabling Audio");
             userInteracted = true; 
-             playBtn.innerHTML = `<i class="fa-solid fa-volume-xmark"></i> <span class="sm:block hidden">Disable TTS</span>`
+             playBtn.innerHTML = `<i class="fa-solid fa-volume-xmark"></i> <span >Disable TTS</span>`
              playBtn.classList.add("bg-red-500");
              playBtn.classList.remove("bg-blue-500");
       

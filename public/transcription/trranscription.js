@@ -19,8 +19,8 @@ function updateUI(isActive) {
     transcriptionLang.disabled = isActive;
     // translationLang.disabled = isActive;
     recordBtn.innerHTML = isActive
-        ? `<i class="fas fa-stop"></i> <span class="sm:block hidden">Stop Listening</span>`
-        : `<i class="fas fa-microphone"></i> <span class="sm:block hidden">Start Listening</span>`;
+        ? `<i class="fas fa-stop"></i> <span >Stop Listening</span>`
+        : `<i class="fas fa-microphone"></i> <span >Start Listening</span>`;
     recordBtn.classList.toggle("bg-red-500", isActive);
     recordBtn.classList.toggle("bg-blue-500", !isActive);
 }
@@ -75,7 +75,7 @@ recordBtn.addEventListener("click", async () => {
             socket = createWebSocket();
             socket.onopen = () => {
                 console.log("✅ WebSocket Connected");
-
+                console.log("🔊 Sending language settings to server",transcriptionLang.value);
                 // ✅ Send selected transcription and translation languages
                 socket.send(
                     JSON.stringify({
