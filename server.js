@@ -26,10 +26,10 @@ app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 app.get("/transcription", (req, res) => {
-    res.sendFile(path.join(__dirname, "public", "translation", "translation.html"));
+    res.sendFile(path.join(__dirname, "public", "transcription", "index.html"));
 });
 app.get("/translation", (req, res) => {
-    res.sendFile(path.join(__dirname, "public", "translation", "translation.html"));
+    res.sendFile(path.join(__dirname, "public", "translation", "index.html"));
 });
 
 const clients = new Map();
@@ -199,7 +199,7 @@ async function synthesizeSpeech(text, lang) {
     try {
         const [response] = await ttsClient.synthesizeSpeech({
             input: {text},
-            voice: {languageCode: lang, ssmlGender: "NEUTRAL"},
+            voice: {languageCode: lang, ssmlGender: "MALE"}, // Change voice to male
             audioConfig: {audioEncoding: "MP3"},
         });
         console.log("🔊 TTS audio generated");
