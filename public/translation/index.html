@@ -8,6 +8,14 @@
     <link rel="stylesheet" href="../style.css" />
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media (max-width: 640px) {
+            .btn {
+                font-size: 0.875rem; /* 14px */
+                padding: 0.75rem 1rem; /* 12px 16px */
+            }
+        }
+    </style>
   </head>
   <body
     class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen w-full"
@@ -43,10 +51,10 @@
       </div>
     </div>
 
-    <div class=" w-full flex  justify-center gap-5">
-      <button id="play-btn" class="bg-blue-500 mb-4  sm:px-6 px-4 py-4  rounded-full text-base font-semibold shadow-lg hover:bg-blue-700 transition flex items-center gap-2" title="Enable TTS"><i class="fa-solid fa-volume-high"></i><span class="sm:block hidden">Enable TTS</span>
+    <div class=" w-full flex sm:flex-row-reverse  justify-center gap-5">
+      <a href="/" class="bg-blue-500 mb-4 sm:px-6 px-4 sm:py-4 py-3 rounded-full text-base font-semibold shadow-lg hover:bg-blue-700 transition flex items-center gap-2 btn" title="Go To Home Page"><i class="fa-solid fa-house"></i><span class="sm:block hidden">Go To Home Page</span> </a>
+      <button id="play-btn" class="bg-blue-500 mb-4  sm:px-6 px-4 sm:py-4 py-3  rounded-full text-base font-semibold shadow-lg hover:bg-blue-700 transition flex items-center gap-2 btn" title="Enable TTS"><i class="fa-solid fa-volume-high"></i><span >Enable TTS</span>
       </button>
-      <a href="/" class="bg-blue-500 mb-4 sm:px-6 px-4 py-4 rounded-full text-base font-semibold shadow-lg hover:bg-blue-700 transition flex items-center gap-2" title="Go To Home Page"><i class="fa-solid fa-house"></i><span class="sm:block hidden">Go To Home Page</span> </a>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>

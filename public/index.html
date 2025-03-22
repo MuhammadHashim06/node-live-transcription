@@ -9,17 +9,25 @@
     <link rel="stylesheet" href="../style.css">
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media (max-width: 640px) {
+            .btn {
+                font-size: 0.875rem; /* 14px */
+                padding: 0.75rem 1rem; /* 12px 16px */
+            }
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen w-full ">
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen w-full p-4">
 
-    <h1 class="text-4xl mb-8 font-semibold">Welcome to LiveWorld.io</h1>
+    <h1 class="text-4xl mb-8 font-semibold text-center">Welcome to LiveWorld.io</h1>
     <p class="text-lg mb-8 text-center">Experience real-time multilingual speech transcription and translation with ease.</p>
     <div class="w-full flex justify-center gap-5">
-        <a href="/transcription" class="bg-blue-500 mb-4 sm:px-6 px-5 py-4 rounded-full text-base font-semibold shadow-lg hover:bg-blue-700 transition flex items-center gap-2">
-            <i class="fas fa-microphone"></i> <span class="sm:block hidden">Transcription</span>
+        <a href="/transcription" class="bg-blue-500 sm:px-6 px-5 py-4 rounded-full text-base font-semibold shadow-lg hover:bg-blue-700 transition flex items-center justify-center gap-2 btn">
+            <i class="fas fa-microphone"></i> <span>Transcription</span>
         </a>
-        <a href="/translation" class="bg-green-500 mb-4 sm:px-6 px-5 py-4 rounded-full text-base font-semibold shadow-lg hover:bg-green-700 transition flex items-center gap-2">
-            <i class="fas fa-language"></i> <span class="sm:block hidden">Translation</span>
+        <a href="/translation" class="bg-green-500 sm:px-6 px-5 py-4 rounded-full text-base font-semibold shadow-lg hover:bg-green-700 transition flex items-center justify-center gap-2 btn">
+            <i class="fas fa-language"></i> <span>Translation</span>
         </a>
     </div>
 
